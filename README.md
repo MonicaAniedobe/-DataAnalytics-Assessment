@@ -1,6 +1,6 @@
-📊 SQL Analysis Project: Customer Segmentation and Plan Engagement
+# SQL Analysis Project: Customer Segmentation and Plan Engagement
 
-🔍 Overview
+## Overview
 
 This project analyzes customer engagement with savings and investment plans using MySQL. The goal was to identify high-value customers who have funded both savings and investment plans  a key insight for cross-selling opportunities.
 
@@ -12,12 +12,9 @@ savings_savingsaccount (savings transactions)
 
 plans_plan 
 
-🧠 Per-Question Explanations
+ ## Assessment_Q1.sql : Identify customers with at least one funded savings plan and one funded investment plan
 
-
-❓Q1: Identify customers with at least one funded savings plan and one funded investment plan
-
-📘 Per-Question Explanation:
+ ### Per-Question Explanation:
 
 1️⃣ Selecting User Details
 
@@ -52,7 +49,7 @@ Used a HAVING clause to only include customers with at least one savings plan an
 Ordered final results by total_deposits in descending order to see highest depositors first.
 
 
-CODE:
+## CODE:
 
 SELECT 
 
@@ -96,6 +93,162 @@ ORDER BY
 
     total_deposits DESC;
     
+## Challenges Encountered:
+
+🛑 Schema Difference / Column Mapping Assumptions
+Initially assumed the join would be via savings_savingsaccount.owner_id to users_customuser.id and savings_savingsaccount.plan_id to plans_plan.id.
+
+### Resolution:
+Confirmed the schema relationships via table definitions in the database navigator to ensure correct columns were joined.
+
+## Assessment_Q2.sql : Calculate the average number of transactions per customer per month and categorize them:
+### "High Frequency" (≥10 transactions/month)
+### "Medium Frequency" (3-9 transactions/month)
+### "Low Frequency" (≤2 transactions/month)
+
+### Per-Question Explanation:
+
+This query calculates the total number of funded transactions per customer.
+
+It divides the total number of transactions by the number of distinct months those transactions occurred to get an average per month.
+
+Based on this average, customers are categorized into High, Medium, or Low Frequency.
+
+## CODE :
+
+SELECT 
+
+    frequency_category,
+    COUNT(DISTINCT owner_id) AS customer_count,
+    AVG(avg_txn_per_month) AS avg_transactions_per_month
+FROM (
+
+    SELECT 
+        s.owner_id,
+        COUNT(s.id) / COUNT(DISTINCT DATE_FORMAT(s.transaction_date, '%Y-%m')) AS avg_txn_per_month,
+        
+        CASE 
+        
+            WHEN COUNT(s.id) / COUNT(DISTINCT DATE_FORMAT(s.transaction_date, '%Y-%m')) >= 10 THEN 'High Frequency'
+            WHEN COUNT(s.id) / COUNT(DISTINCT DATE_FORMAT(s.transaction_date, '%Y-%m')) BETWEEN 3 AND 9 THEN 'Medium Frequency'
+            
+            ELSE 'Low Frequency'
+            
+        END AS frequency_category
+        
+    FROM savings_savingsaccount s
+    
+    WHERE s.transaction_status = 'funded'
+    
+    GROUP BY s.owner_id
+    
+) AS txn_summary
+
+GROUP BY frequency_category;
+
+## Challanges :
+The savings_savingsaccount table currently has no records with transaction_status = 'funded'.
+
+As a result, the query returns no rows.
+
+Solution: Confirmed the query syntax is correct by testing with mock data
+
+## Assessment_Q3.sql : Find all active accounts (savings or investments) with no transactions in the last 1 year (365 days) .
+
+## Approach:
+
+LEFT JOIN is used to pair each plan with its corresponding transactions (if any).
+
+MAX(s.transaction_date) finds the latest transaction date per account.
+
+DATEDIFF(CURDATE(), MAX(s.transaction_date)) calculates inactivity in days.
+
+The HAVING clause filters:
+
+Accounts with no transactions (MAX(s.transaction_date) IS NULL)
+
+Or accounts whose last transaction is older than 365 days
+
+Grouped by plan ID and owner ID to ensure unique plan-account combinations.
+
+## CODE :
+
+SELECT 
+    p.id AS plan_id,
+    
+    p.owner_id,
+    
+    MAX(s.transaction_date) AS last_transaction_date,
+    
+    DATEDIFF(CURDATE(), MAX(s.transaction_date)) AS inactivity_days
+    
+FROM plans_plan p
+
+LEFT JOIN savings_savingsaccount s 
+
+    ON s.savings_id = p.id
+    
+GROUP BY p.id, p.owner_id
+
+HAVING 
+
+    MAX(s.transaction_date) IS NULL
+    
+    OR DATEDIFF(CURDATE(), MAX(s.transaction_date)) > 365;
+
+# Assessment_Q4.sql:  For each customer, assuming the profit_per_transaction is 0.1% of the transaction value, calculate:
+Account tenure (months since signup)
+Total transactions
+Estimated CLV (Assume: CLV = (total_transactions / tenure) * 12 * avg_profit_per_transaction)
+Order by estimated CLV from highest to lowest.
+
+## 📌Approach :
+TIMESTAMPDIFF(MONTH, u.date_joined, CURDATE()) → Calculates the number of months since the user joined.
+
+COUNT(s.id) → Counts all transactions the user has made.
+
+AVG(s.amount) → Computes the average transaction value.
+
+The CLV formula scales average monthly transactions to yearly, multiplies it by 0.001 (0.1%) of the average transaction value, and rounds it to 2 decimal places.
+
+LEFT JOIN is used to ensure users with no transactions are still included (with total transactions as 0).
+
+HAVING tenure_months > 0 protects against division by zero when calculating average transactions per month.
+
+ORDER BY estimated_clv DESC ranks customers by their projected value to the business.
+
+## QUERY :
+
+SELECT 
+    u.id AS customer_id,
+    
+    u.name,
+    
+    TIMESTAMPDIFF(MONTH, u.date_joined, CURDATE()) AS tenure_months,
+    
+    COUNT(s.id) AS total_transactions,
+    
+    ROUND(
+        (COUNT(s.id) / TIMESTAMPDIFF(MONTH, u.date_joined, CURDATE())) * 12 
+        * (0.001 * AVG(s.amount)),
+        
+        2
+    ) AS estimated_clv
+    
+FROM users_customuser u
+
+LEFT JOIN savings_savingsaccount s 
+
+    ON s.savings_id = u.id
+    
+GROUP BY u.id, u.name
+
+HAVING tenure_months > 0 -- avoid division by zero
+
+ORDER BY estimated_clv DESC;
+
+
+
 
 
 
